@@ -134,5 +134,20 @@ namespace VirtualClient
             await fileHandler.WriteAllTextAsync(file, fileContent, cancellationToken)
                 .ConfigureAwait(false);
         }
+
+        /// <summary>
+        /// Replaces the pattern from the file contents.
+        /// </summary>
+        /// <param name="fileHandler">An interface to the filesystem to interact on a per file basis.</param>
+        /// <param name="file">The fully qualified path to the file in which we want to replace the pattern.</param>
+        /// <param name="fileContent">Pattern to replace from the file contents.</param>
+        /// <param name="cancellationToken">A token that can be used to cancel the operation.</param>
+        public static void WriteInFileAsync(this IFile fileHandler, string file, string fileContent, CancellationToken cancellationToken)
+        {
+            FileSystemExtensions.ThrowIfFileDoesNotExist(fileHandler, file);
+            
+            fileHandler.WriteAllTextAsync(file, fileContent, cancellationToken)
+                .ConfigureAwait(false);
+        }
     }
 }

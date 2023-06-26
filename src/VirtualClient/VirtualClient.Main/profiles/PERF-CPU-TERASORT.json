@@ -1,0 +1,56 @@
+{
+    "Description": "Hadoop Terasort Benchmark",
+    "Metadata": {
+        "RecommendedMinimumExecutionTime": "00:05:00",
+        "SupportedPlatforms": "linux-x64",
+        "SupportedOperatingSystems": "CBL-Mariner,CentOS,Debian,RedHat,Suse,Ubuntu"
+    },
+    "Parameters": {
+        "rowNumbers": "100000"
+    },
+    "Actions": [
+        {
+          "Type": "HadoopTerasortExecutor",
+          "Parameters": {
+            "Scenario": "HadoopTerasortExecutor",
+            "PackageName": "hadoop-3.3.5",
+            "JdkPackageName": "javadevelopmentkit",
+            "CCSArguments": "org.spec.power.ccs.SpecPowerCCS ccs.props",
+            "DirectorArguments": "-Djava.awt.headless=true -Xms64m -Xmx256m org.spec.power.ssj.Director -propfile SPECpower_ssj.props",
+            "SSJArguments": "-Djava.awt.headless=true -Xms{RAM_MB}m -Xmx{RAM_MB}m org.spec.power.ssj.SpecPowerSsj -jvmid {JVM_ID} -numJvms {INSTANCE_COUNT} -director 127.0.0.1 -setid sut",
+            "LoadPercentageSequence": 70,
+            "LoadLevelLengthSeconds": 86400,
+            "Tags": "Reliability,Power,SPECpower"
+          }
+        }
+    ],
+  "Dependencies": [
+    {
+      "Type": "DependencyPackageInstallation",
+      "Parameters": {
+        "Scenario": "InstallHadoopPackage",
+        "BlobContainer": "packages",
+        "BlobName": "hadoop-3.3.5.zip",
+        "PackageName": "hadoop-3.3.5",
+        "Extract": true
+      }
+    },
+    {
+      "Type": "DependencyPackageInstallation",
+      "Parameters": {
+        "Scenario": "InstallJavaSDKPackage",
+        "BlobContainer": "packages",
+        "BlobName": "microsoft-jdk-11.0.19.zip",
+        "PackageName": "javadevelopmentkit",
+        "Extract": true
+      }
+    },
+    {
+      "Type": "JavaDevelopmentKitInstallation",
+      "Parameters": {
+        "Scenario": "InstallJDK",
+        "PackageName": "javadevelopmentkit"
+      }
+    }
+  ]
+}

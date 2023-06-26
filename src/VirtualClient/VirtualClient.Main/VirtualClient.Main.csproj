@@ -146,7 +146,9 @@
         <LinuxProfiles Include="profiles\POWER-SPEC100.json" />
 	    <LinuxProfiles Include="profiles\SETUP-AMD-GPU-DRIVER.json" />
         <LinuxProfiles Include="profiles\QUAL-GPU-DCGMI.json" />
-    </ItemGroup>
+		<LinuxProfiles Include="profiles\PERF-CPU-TERASORT.json" />
+
+	</ItemGroup>
 
     <ItemGroup>
         <MonitorProfiles Include="profiles\MONITORS-DEFAULT.json" />
@@ -163,8 +165,10 @@
         <Message Importance="high" Text="RuntimeIdentifier = $(RuntimeIdentifier)" />
 
         <!-- Windows-supported workload profiles -->
-        <Copy Condition="'$(RuntimeIdentifier)' == 'win-x64' or '$(RuntimeIdentifier)' == 'win-arm64'" SourceFiles="@(WindowsProfiles)" DestinationFiles="@(WindowsProfiles->'$(OutputPath)publish\profiles\%(Filename)%(Extension)')" />
-
+		<!-- 
+		<Copy Condition="'$(RuntimeIdentifier)' == 'win-x64' or '$(RuntimeIdentifier)' == 'win-arm64'" SourceFiles="@(WindowsProfiles)" DestinationFiles="@(WindowsProfiles->'$(OutputPath)publish\profiles\%(Filename)%(Extension)')" />
+		-->
+		
         <!-- Linux-supported workload profiles -->
         <Copy Condition="'$(RuntimeIdentifier)' == 'linux-x64' or '$(RuntimeIdentifier)' == 'linux-arm64'" SourceFiles="@(LinuxProfiles)" DestinationFiles="@(LinuxProfiles->'$(OutputPath)publish\profiles\%(Filename)%(Extension)')" />
 

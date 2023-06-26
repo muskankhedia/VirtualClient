@@ -372,6 +372,9 @@ namespace VirtualClient
         public static void SetEnvironmentVariable(this VirtualClientComponent component, string name, string value, EnvironmentVariableTarget target = EnvironmentVariableTarget.Process, bool append = false)
         {
             component.ThrowIfNull(nameof(component));
+            ConsoleLogger.Default.LogInformation($"component: {component}");
+            ConsoleLogger.Default.LogInformation($"Name1: {name}");
+            ConsoleLogger.Default.LogInformation($"Value1: {value}");
             component.PlatformSpecifics.SetEnvironmentVariable(name, value, target, append);
         }
 

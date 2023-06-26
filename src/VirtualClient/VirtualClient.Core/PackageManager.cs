@@ -707,6 +707,7 @@ namespace VirtualClient
             package.ThrowIfNull(nameof(package));
             EventContext telemetryContext = EventContext.Persisted()
                .AddContext("package", package);
+            ConsoleLogger.Default.LogInformation($"package: {package}");
 
             return this.Logger.LogMessageAsync($"{nameof(PackageManager)}.RegisterPackage", telemetryContext, () =>
             {
