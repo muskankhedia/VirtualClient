@@ -13,6 +13,7 @@ namespace VirtualClient.Actions
     using Microsoft.CodeAnalysis;
     using Microsoft.Extensions.DependencyInjection;
     using Microsoft.Extensions.Logging;
+    using Polly;
     using VirtualClient.Common;
     using VirtualClient.Common.Extensions;
     using VirtualClient.Common.Telemetry;
@@ -35,10 +36,17 @@ namespace VirtualClient.Actions
         public HadoopTerasortExecutor(IServiceCollection dependencies, IDictionary<string, IConvertible> parameters)
              : base(dependencies, parameters)
         {
+            this.RetryPolicy = Policy.Handle<Exception>().WaitAndRetryAsync(5, (retries) => TimeSpan.FromSeconds(retries + 1));
             this.systemManagement = this.Dependencies.GetService<ISystemManagement>();
             this.packageManager = this.systemManagement.PackageManager;
             this.fileSystem = this.systemManagement.FileSystem;
         }
+
+        /// <summary>
+        /// A policy that defines how the component will retry when
+        /// it experiences transient issues.
+        /// </summary>
+        public IAsyncPolicy RetryPolicy { get; set; }
 
         /// <summary>
         /// Java Development Kit package name.
@@ -82,10 +90,6 @@ namespace VirtualClient.Actions
             this.PackageDirectory = workloadPackage.Path;
             this.JavaPackageDirectory = javaPackage.Path;
 
-            ConsoleLogger.Default.LogInformation($"workloadPackage: {workloadPackage}");
-            ConsoleLogger.Default.LogInformation($"PackageDirectory: {this.PackageDirectory}"); // /home/azureuser/VirtualClient.13.6.1/content/linux-x64/packages/hadoop-3.3.5/linux-x64
-            ConsoleLogger.Default.LogInformation($"JavaPackageDirectory: {this.JavaPackageDirectory}"); // /home/azureuser/VirtualClient.13.6.1/content/linux-x64/packages/microsoft-jdk-17.0.5/linux-x64
-
             switch (this.Platform)
             {
                 case PlatformID.Unix:
@@ -100,56 +104,104 @@ namespace VirtualClient.Actions
             }
 
             this.SetEnvironmentVariable(EnvironmentVariable.JAVA_HOME, this.JavaPackageDirectory, EnvironmentVariableTarget.Process);
-            this.SetEnvironmentVariable(EnvironmentVariable.HADOOP_MAPRED_HOME, this.PackageDirectory, EnvironmentVariableTarget.Process);
+            // this.SetEnvironmentVariable(EnvironmentVariable.HADOOP_MAPRED_HOME, this.PackageDirectory, EnvironmentVariableTarget.Process);
 
-            ConsoleLogger.Default.LogInformation($"GetEnvironmentVariable: {this.GetEnvironmentVariable("JAVA_HOME")}");  // /home/azureuser/VirtualClient-25/content/linux-x64/packages/microsoft-jdk-11.0.19/linux-x64
-            ConsoleLogger.Default.LogInformation($"GetEnvironmentVariable: {this.GetEnvironmentVariable("HADOOP_MAPRED_HOME")}");  // /home/azureuser/VirtualClient-25/content/linux-x64/packages/microsoft-jdk-11.0.19/linux-x64
-
-            string makeFilePath = this.PlatformSpecifics.Combine(this.PackageDirectory, "etc", "hadoop");
-            string hadoopEnvFilePath = this.PlatformSpecifics.Combine(makeFilePath, "hadoop-env.sh");
-
-            this.fileSystem.File.ReplaceInFileAsync(
-                        hadoopEnvFilePath, @"# export JAVA_HOME=", $"export JAVA_HOME={this.JavaPackageDirectory}", cancellationToken);
-
-            // this.ConfigurationFilesAsync(telemetryContext, cancellationToken);
+            this.ConfigurationFilesAsync(telemetryContext, cancellationToken);
 
             await this.systemManagement.MakeFileExecutableAsync(this.ExecutablePath, this.Platform, cancellationToken)
                 .ConfigureAwait(false);
+            string javaPath = this.JavaPackageDirectory + "/bin/java";
+            await this.systemManagement.MakeFileExecutableAsync(javaPath, this.Platform, cancellationToken)
+                .ConfigureAwait(false);
+        }
 
-            using (IProcessProxy process = await this.ExecuteCommandAsync("apt-get install ssh", null, this.PackageDirectory, telemetryContext, cancellationToken, true)
-                   .ConfigureAwait(false))
-            {
-                if (!cancellationToken.IsCancellationRequested)
-                {
-                    // await this.LogProcessDetailsAsync(process, telemetryContext, "7Zip", logToFile: true);
-                    ConsoleLogger.Default.LogInformation($"command: {process}");
-                    process.ThrowIfWorkloadFailed();
-                    // this.CaptureMetrics(process, telemetryContext, commandLineArguments);
-                }
-            }
-
+        /// <summary>
+        /// Executes the Hadoop Terasort workload.
+        /// </summary>
+        protected override async Task<bool> ExecuteAsync(EventContext telemetryContext, CancellationToken cancellationToken)
+        {
             string timestamp = DateTime.Now.ToString("ddMMyyHHmmss");
 
-            List<string> commands = new List<string>
+            List<string> commands1 = new List<string>
             {
-                $"mkdir input-{timestamp}",
-                $"cp etc/hadoop/capacity-scheduler.xml input-{timestamp}",
-                $"cp etc/hadoop/core-site.xml input-{timestamp}",
-                $"cp etc/hadoop/hadoop-policy.xml input-{timestamp}",
-                $"cp etc/hadoop/hdfs-rbf-site.xml input-{timestamp}",
-                $"cp etc/hadoop/hdfs-site.xml input-{timestamp}",
-                $"cp etc/hadoop/httpfs-site.xml input-{timestamp}",
-                $"cp etc/hadoop/kms-acls.xml input-{timestamp}",
-                $"cp etc/hadoop/kms-site.xml input-{timestamp}",
-                $"cp etc/hadoop/mapred-site.xml input-{timestamp}",
-                $"cp etc/hadoop/yarn-site.xml input-{timestamp}",
-                $"bin/hadoop jar share/hadoop/mapreduce/hadoop-mapreduce-examples-3.3.5.jar grep input-{timestamp} output-{timestamp} 'dfs[a-z.]+'",
-                $"cat output-{timestamp}/*"
+                "ssh-keygen -t rsa -P '' -f ~/.ssh/id_rsa",
+                "cat ~/.ssh/id_rsa.pub >> ~/.ssh/authorized_keys",
+                "chmod 0600 ~/.ssh/authorized_keys",
+                "ssh localhost"
             };
 
-            foreach (string command in commands)
+            // SSH into the machine
+            List<string> commands = new List<string>
             {
-                using (IProcessProxy process = await this.ExecuteCommandAsync(command, null, this.PackageDirectory, telemetryContext, cancellationToken, true)
+                "chmod u+x bin/hdfs",
+                "chmod u+x sbin/start-dfs.sh",
+                "chmod u+x sbin/stop-dfs.sh",
+                "chmod u+x bin/yarn",
+                "chmod u+x sbin/start-yarn.sh",
+                "chmod u+x sbin/stop-yarn.sh",
+                "bin/hdfs namenode -format",
+                "sbin/start-dfs.sh",
+                "bin/hdfs dfs -mkdir /user/azureuser",  // fetch <username>
+                "sbin/start-yarn.sh",
+                $"bin/hadoop jar share/hadoop/mapreduce/hadoop-mapreduce-examples-3.3.5.jar teragen 100 /inp-{timestamp}",
+                $"bin/hadoop jar share/hadoop/mapreduce/hadoop-mapreduce-examples-3.3.5.jar terasort /inp-{timestamp} /out-{timestamp}",
+                "sbin/stop-dfs.sh",
+                "sbin/stop-yarn.sh"
+            };
+
+            /*await this.ExecuteCommandAsync("sudo", "apt-get install ssh", Environment.CurrentDirectory, telemetryContext, cancellationToken)
+                    .ConfigureAwait(false);
+
+            await this.ExecuteCommandAsync("ssh-keygen", "-t rsa -P '' -f ~/.ssh/id_rsa", this.PackageDirectory, telemetryContext, cancellationToken)
+                    .ConfigureAwait(false);
+
+            await this.ExecuteCommandAsync("chmod", "0600 ~/.ssh/authorized_keys", this.PackageDirectory, telemetryContext, cancellationToken)
+                    .ConfigureAwait(false);*/
+
+            // await this.ExecuteCommandAsync("ssh", "localhost", this.PackageDirectory, telemetryContext, cancellationToken)
+                    // .ConfigureAwait(false);
+
+            string path1 = this.PackageDirectory + "/bin/hdfs";
+            string path2 = this.PackageDirectory + "/sbin/start-dfs.sh";
+            string path3 = this.PackageDirectory + "/sbin/stop-dfs.sh";
+            string path4 = this.PackageDirectory + "/bin/yarn";
+            string path5 = this.PackageDirectory + "/sbin/start-yarn.sh";
+
+            await this.systemManagement.MakeFileExecutableAsync(path1, this.Platform, cancellationToken)
+                .ConfigureAwait(false);
+            await this.systemManagement.MakeFileExecutableAsync(path2, this.Platform, cancellationToken)
+                .ConfigureAwait(false);
+            await this.systemManagement.MakeFileExecutableAsync(path3, this.Platform, cancellationToken)
+                .ConfigureAwait(false);
+            await this.systemManagement.MakeFileExecutableAsync(path4, this.Platform, cancellationToken)
+                .ConfigureAwait(false);
+            await this.systemManagement.MakeFileExecutableAsync(path5, this.Platform, cancellationToken)
+                .ConfigureAwait(false);
+            string path6 = this.PackageDirectory + "/bin";
+            await this.ExecuteCommandAsync("/usr/bin/env", "./hdfs namnode -format", path6, telemetryContext, cancellationToken)
+                    .ConfigureAwait(false);
+
+            await this.ExecuteCommandAsync("sbin/start-dfs.sh", null, this.PackageDirectory, telemetryContext, cancellationToken)
+                    .ConfigureAwait(false);
+
+            await this.ExecuteCommandAsync("bin/hdfs", "dfs -mkdir /user/azureuser", this.PackageDirectory, telemetryContext, cancellationToken)
+                    .ConfigureAwait(false);
+
+            await this.ExecuteCommandAsync("sbin/start-yarn.sh", null, this.PackageDirectory, telemetryContext, cancellationToken)
+                    .ConfigureAwait(false);
+
+            await this.ExecuteCommandAsync("bin/hadoop", "jar share/hadoop/mapreduce/hadoop-mapreduce-examples-3.3.5.jar teragen 100 /inp-{timestamp}", this.PackageDirectory, telemetryContext, cancellationToken)
+                    .ConfigureAwait(false);
+
+            /*foreach (string command in commands1)
+            {
+                await this.ExecuteCommandAsync(string.Empty, command, Environment.CurrentDirectory, telemetryContext, cancellationToken)
+                    .ConfigureAwait(false);
+            }*/
+
+            /*foreach (string command in commands)
+            {
+                *//*using (IProcessProxy process = await this.ExecuteCommandAsync(command, this.PackageDirectory, telemetryContext, cancellationToken)
                    .ConfigureAwait(false))
                 {
                     if (!cancellationToken.IsCancellationRequested)
@@ -159,46 +211,10 @@ namespace VirtualClient.Actions
                         process.ThrowIfWorkloadFailed();
                         // this.CaptureMetrics(process, telemetryContext, commandLineArguments);
                     }
-                }
-            }
-
-            // this.CreateNodeFolders(telemetryContext, cancellationToken);
-
-            // TODO: update the bin folder
-
-            // await this.ExecuteCommandAsync("hadoop", "version", this.PlatformSpecifics.Combine(this.PackageDirectory, $"bin"), telemetryContext, cancellationToken);
-            // await this.ExecuteCommandAsync("hdfs", "--namenode ", this.PlatformSpecifics.Combine(this.PackageDirectory, $"bin"), telemetryContext, cancellationToken);
-
-            // return Task.FromResult(false);
-        }
-
-        /// <summary>
-        /// Executes the Hadoop Terasort workload.
-        /// </summary>
-        protected override async Task<bool> ExecuteAsync(EventContext telemetryContext, CancellationToken cancellationToken)
-        {
-            // SSH into the machine
-            List<string> commands = new List<string>
-            {
-                "ssh-keygen -t rsa -P '' -f ~/.ssh/id_rsa",
-                "cat ~/.ssh/id_rsa.pub >> ~/.ssh/authorized_keys",
-                "chmod 0600 ~/.ssh/authorized_keys",
-                "chmod u+x bin/hdfs",
-                "bin/hdfs namenode -format",
-                "bin/hdfs dfs -mkdir /user",
-                "bin/hdfs dfs -mkdir /user/azureuser",  // fetch <username>
-                "chmod u+x sbin/start-yarn.sh",
-                "chmod u+x sbin/stop-yarn.sh"
-            };
-            // commands.Add("sbin/start-yarn.sh");
-
-            foreach (string command in commands)
-            {
-                ConsoleLogger.Default.LogInformation($"Executing Command: {command}");
-
-                await this.ExecuteCommandAsync(command, null, this.PackageDirectory, telemetryContext, cancellationToken, true)
+                }*//*
+                await this.ExecuteCommandAsync(string.Empty, command, this.PackageDirectory, telemetryContext, cancellationToken)
                     .ConfigureAwait(false);
-            }
+            }*/
 
             /*ConsoleLogger.Default.LogInformation($"Commands assigned");
 
@@ -215,11 +231,11 @@ namespace VirtualClient.Actions
                     .ConfigureAwait(false);*/
             // Run mapreduce job based on user input
 
-                // Mapreduce commands - teragen
-                // string teragenCommand = "hadoop jar hadoop-*examples*.jar teragen 10000 /out";
+            // Mapreduce commands - teragen
+            // string teragenCommand = "hadoop jar hadoop-*examples*.jar teragen 10000 /out";
 
-                // Collect metrics
-                // Stop the server
+            // Collect metrics
+            // Stop the server
 
             return false;
         }
@@ -253,6 +269,40 @@ namespace VirtualClient.Actions
                 { "yarn.nodemanager.env-whitelist", "JAVA_HOME,HADOOP_COMMON_HOME,HADOOP_HDFS_HOME,HADOOP_CONF_DIR,CLASSPATH_PREPEND_DISTCACHE,HADOOP_YARN_HOME,HADOOP_HOME,PATH,LANG,TZ,HADOOP_MAPRED_HOME" }
             };
             this.CreateHTMLValue("yarn-site.xml", yarnSite, cancellationToken);
+
+            string makeFilePath = this.PlatformSpecifics.Combine(this.PackageDirectory, "etc", "hadoop");
+            string hadoopEnvFilePath = this.PlatformSpecifics.Combine(makeFilePath, "hadoop-env.sh");
+
+            this.fileSystem.File.ReplaceInFileAsync(
+                        hadoopEnvFilePath, @"# export JAVA_HOME=", $"export JAVA_HOME={this.JavaPackageDirectory}", cancellationToken);
+
+            string dfsParam = @"#!/usr/bin/env bash 
+                                HDFS_DATANODE_USER = root 
+                                HADOOP_SECURE_DN_USER = hdfs
+                                HDFS_NAMENODE_USER = root
+                                HDFS_SECONDARYNAMENODE_USER = root";
+
+            string yarnParam = @"#!/usr/bin/env bash
+                                YARN_RESOURCEMANAGER_USER=root
+                                HADOOP_SECURE_DN_USER=yarn
+                                YARN_NODEMANAGER_USER=root";
+
+            string runFilePath = this.PlatformSpecifics.Combine(this.PackageDirectory, "sbin");
+            string startDfsFilePath = this.PlatformSpecifics.Combine(makeFilePath, "start-dfs.sh");
+            this.fileSystem.File.ReplaceInFileAsync(
+                        startDfsFilePath, @"#!/usr/bin/env bash", dfsParam, cancellationToken);
+
+            string stopDfsFilePath = this.PlatformSpecifics.Combine(makeFilePath, "stop-dfs.sh");
+            this.fileSystem.File.ReplaceInFileAsync(
+                        stopDfsFilePath, @"#!/usr/bin/env bash", dfsParam, cancellationToken);
+
+            string startYarnFilePath = this.PlatformSpecifics.Combine(makeFilePath, "start-yarn.sh");
+            this.fileSystem.File.ReplaceInFileAsync(
+                        startYarnFilePath, @"#!/usr/bin/env bash", yarnParam, cancellationToken);
+
+            string stopYarnFilePath = this.PlatformSpecifics.Combine(makeFilePath, "stop-yarn.sh");
+            this.fileSystem.File.ReplaceInFileAsync(
+                        stopYarnFilePath, @"#!/usr/bin/env bash", yarnParam, cancellationToken);
 
         }
 
@@ -293,6 +343,32 @@ namespace VirtualClient.Actions
 
             this.fileSystem.Directory.CreateDirectory(dataNodeDirectory);
             this.fileSystem.Directory.CreateDirectory(nameNodeDirectory);
+        }
+
+        private Task ExecuteCommandAsync(string commandLine, string arguments, string workingDirectory, EventContext telemetryContext, CancellationToken cancellationToken)
+        {
+            EventContext relatedContext = telemetryContext.Clone();
+
+            return this.RetryPolicy.ExecuteAsync(async () =>
+            {
+                using (IProcessProxy process = this.systemManagement.ProcessManager.CreateProcess(commandLine, arguments, workingDirectory))
+                {
+                    ConsoleLogger.Default.LogInformation($"command: {arguments},,,, workingDirectory: {workingDirectory}");
+                    this.CleanupTasks.Add(() => process.SafeKill());
+                    this.LogProcessTrace(process);
+
+                    await process.StartAndWaitAsync(cancellationToken)
+                        .ConfigureAwait(false);
+
+                    if (!cancellationToken.IsCancellationRequested)
+                    {
+                        await this.LogProcessDetailsAsync(process, relatedContext, "HadoopExecutor")
+                            .ConfigureAwait(false);
+
+                        process.ThrowIfErrored<DependencyException>(errorReason: ErrorReason.DependencyInstallationFailed);
+                    }
+                }
+            });
         }
     }
 }
