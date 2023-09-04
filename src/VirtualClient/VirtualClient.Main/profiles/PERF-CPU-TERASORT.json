@@ -20,7 +20,9 @@
             "SSJArguments": "-Djava.awt.headless=true -Xms{RAM_MB}m -Xmx{RAM_MB}m org.spec.power.ssj.SpecPowerSsj -jvmid {JVM_ID} -numJvms {INSTANCE_COUNT} -director 127.0.0.1 -setid sut",
             "LoadPercentageSequence": 70,
             "LoadLevelLengthSeconds": 86400,
-            "Tags": "Reliability,Power,SPECpower"
+            "Tags": "Reliability,Power,SPECpower",
+            "CommandLine": "bash",
+            "CommandArguments": "-c \"ssh-keygen -t rsa -P '' -f ~/.ssh/id_rsa\", -c 'cat ~/.ssh/id_rsa.pub >> ~/.ssh/authorized_keys'"
           }
         }
     ],

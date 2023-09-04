@@ -13,11 +13,13 @@ namespace VirtualClient.Actions
     using Microsoft.CodeAnalysis;
     using Microsoft.Extensions.DependencyInjection;
     using Microsoft.Extensions.Logging;
+    using Microsoft.VisualBasic;
     using Polly;
     using VirtualClient.Common;
     using VirtualClient.Common.Extensions;
     using VirtualClient.Common.Telemetry;
     using VirtualClient.Contracts;
+    using static Azure.Core.HttpHeader;
 
     /// <summary>
     /// The Hadoop Terasort workload executor
@@ -55,7 +57,29 @@ namespace VirtualClient.Actions
         {
             get
             {
-                return this.Parameters.GetValue<string>(nameof(SpecJbbExecutor.JdkPackageName));
+                return this.Parameters.GetValue<string>(nameof(HadoopTerasortExecutor.JdkPackageName));
+            }
+        }
+
+        /// <summary>
+        /// 
+        /// </summary>
+        public string CommandLine
+        {
+            get
+            {
+                return this.Parameters.GetValue<string>(nameof(HadoopTerasortExecutor.CommandLine));
+            }
+        }
+
+        /// <summary>
+        /// 
+        /// </summary>
+        public string CommandArguments
+        {
+            get
+            {
+                return this.Parameters.GetValue<string>(nameof(HadoopTerasortExecutor.CommandArguments));
             }
         }
 
@@ -90,10 +114,12 @@ namespace VirtualClient.Actions
             this.PackageDirectory = workloadPackage.Path;
             this.JavaPackageDirectory = javaPackage.Path;
 
+            string javaExecutablePath = this.PlatformSpecifics.Combine(this.JavaPackageDirectory, "bin", "java");
+
             switch (this.Platform)
             {
                 case PlatformID.Unix:
-                    this.ExecutablePath = this.PlatformSpecifics.Combine(this.PackageDirectory, "bin/hadoop");
+                    this.ExecutablePath = this.PlatformSpecifics.Combine(this.PackageDirectory, "bin", "hadoop");
                     break;
 
                 default:
@@ -104,14 +130,14 @@ namespace VirtualClient.Actions
             }
 
             this.SetEnvironmentVariable(EnvironmentVariable.JAVA_HOME, this.JavaPackageDirectory, EnvironmentVariableTarget.Process);
-            // this.SetEnvironmentVariable(EnvironmentVariable.HADOOP_MAPRED_HOME, this.PackageDirectory, EnvironmentVariableTarget.Process);
 
             this.ConfigurationFilesAsync(telemetryContext, cancellationToken);
+            this.ExecutableFilesAsync(telemetryContext, cancellationToken);
 
             await this.systemManagement.MakeFileExecutableAsync(this.ExecutablePath, this.Platform, cancellationToken)
                 .ConfigureAwait(false);
-            string javaPath = this.JavaPackageDirectory + "/bin/java";
-            await this.systemManagement.MakeFileExecutableAsync(javaPath, this.Platform, cancellationToken)
+
+            await this.systemManagement.MakeFileExecutableAsync(javaExecutablePath, this.Platform, cancellationToken)
                 .ConfigureAwait(false);
         }
 
@@ -121,45 +147,6 @@ namespace VirtualClient.Actions
         protected override async Task<bool> ExecuteAsync(EventContext telemetryContext, CancellationToken cancellationToken)
         {
             string timestamp = DateTime.Now.ToString("ddMMyyHHmmss");
-
-            List<string> commands1 = new List<string>
-            {
-                "ssh-keygen -t rsa -P '' -f ~/.ssh/id_rsa",
-                "cat ~/.ssh/id_rsa.pub >> ~/.ssh/authorized_keys",
-                "chmod 0600 ~/.ssh/authorized_keys",
-                "ssh localhost"
-            };
-
-            // SSH into the machine
-            List<string> commands = new List<string>
-            {
-                "chmod u+x bin/hdfs",
-                "chmod u+x sbin/start-dfs.sh",
-                "chmod u+x sbin/stop-dfs.sh",
-                "chmod u+x bin/yarn",
-                "chmod u+x sbin/start-yarn.sh",
-                "chmod u+x sbin/stop-yarn.sh",
-                "bin/hdfs namenode -format",
-                "sbin/start-dfs.sh",
-                "bin/hdfs dfs -mkdir /user/azureuser",  // fetch <username>
-                "sbin/start-yarn.sh",
-                $"bin/hadoop jar share/hadoop/mapreduce/hadoop-mapreduce-examples-3.3.5.jar teragen 100 /inp-{timestamp}",
-                $"bin/hadoop jar share/hadoop/mapreduce/hadoop-mapreduce-examples-3.3.5.jar terasort /inp-{timestamp} /out-{timestamp}",
-                "sbin/stop-dfs.sh",
-                "sbin/stop-yarn.sh"
-            };
-
-            /*await this.ExecuteCommandAsync("sudo", "apt-get install ssh", Environment.CurrentDirectory, telemetryContext, cancellationToken)
-                    .ConfigureAwait(false);
-
-            await this.ExecuteCommandAsync("ssh-keygen", "-t rsa -P '' -f ~/.ssh/id_rsa", this.PackageDirectory, telemetryContext, cancellationToken)
-                    .ConfigureAwait(false);
-
-            await this.ExecuteCommandAsync("chmod", "0600 ~/.ssh/authorized_keys", this.PackageDirectory, telemetryContext, cancellationToken)
-                    .ConfigureAwait(false);*/
-
-            // await this.ExecuteCommandAsync("ssh", "localhost", this.PackageDirectory, telemetryContext, cancellationToken)
-                    // .ConfigureAwait(false);
 
             string path1 = this.PackageDirectory + "/bin/hdfs";
             string path2 = this.PackageDirectory + "/sbin/start-dfs.sh";
@@ -177,21 +164,47 @@ namespace VirtualClient.Actions
                 .ConfigureAwait(false);
             await this.systemManagement.MakeFileExecutableAsync(path5, this.Platform, cancellationToken)
                 .ConfigureAwait(false);
-            string path6 = this.PackageDirectory + "/bin";
-            await this.ExecuteCommandAsync("/usr/bin/env", "./hdfs namnode -format", path6, telemetryContext, cancellationToken)
+
+            List<string> result = this.CommandArguments.Split(',').ToList();
+
+            foreach (string r in result)
+            {
+                await this.ExecuteCommandAsync(this.CommandLine, r, this.PackageDirectory, telemetryContext, cancellationToken)
+                    .ConfigureAwait(false);
+            }
+
+           /* await this.ExecuteCommandAsync("bash", "-c \"ssh-keygen-t rsa -P '' -f ~/.ssh/id_rsa\"", this.PackageDirectory, telemetryContext, cancellationToken)
+                    .ConfigureAwait(false);
+
+            await this.ExecuteCommandAsync("bash", "-c 'cat ~/.ssh/id_rsa.pub >> ~/.ssh/authorized_keys'", this.PackageDirectory, telemetryContext, cancellationToken)
+                    .ConfigureAwait(false);*/
+
+            /*await this.ExecuteCommandAsync("sudo", "apt-get install ssh", Environment.CurrentDirectory, telemetryContext, cancellationToken)
+                    .ConfigureAwait(false);
+
+            
+
+            await this.ExecuteCommandAsync("chmod", "0600 ~/.ssh/authorized_keys", this.PackageDirectory, telemetryContext, cancellationToken)
+                    .ConfigureAwait(false);*/
+
+            // await this.ExecuteCommandAsync("ssh", "localhost", this.PackageDirectory, telemetryContext, cancellationToken)
+            // .ConfigureAwait(false);
+
+            /*string path6 = this.PackageDirectory + "/bin";
+            await this.ExecuteCommandAsync("bash", "-c 'bin/hdfs namenode -format'", this.PackageDirectory, telemetryContext, cancellationToken)
                     .ConfigureAwait(false);
 
             await this.ExecuteCommandAsync("sbin/start-dfs.sh", null, this.PackageDirectory, telemetryContext, cancellationToken)
                     .ConfigureAwait(false);
 
-            await this.ExecuteCommandAsync("bin/hdfs", "dfs -mkdir /user/azureuser", this.PackageDirectory, telemetryContext, cancellationToken)
+            await this.ExecuteCommandAsync("/usr/bin/env", "./hdfs dfs -mkdir /user/azureuser", this.PackageDirectory, telemetryContext, cancellationToken)
                     .ConfigureAwait(false);
 
             await this.ExecuteCommandAsync("sbin/start-yarn.sh", null, this.PackageDirectory, telemetryContext, cancellationToken)
                     .ConfigureAwait(false);
 
-            await this.ExecuteCommandAsync("bin/hadoop", "jar share/hadoop/mapreduce/hadoop-mapreduce-examples-3.3.5.jar teragen 100 /inp-{timestamp}", this.PackageDirectory, telemetryContext, cancellationToken)
-                    .ConfigureAwait(false);
+            await this.ExecuteCommandAsync("/usr/bin/env", "./hadoop jar share/hadoop/mapreduce/hadoop-mapreduce-examples-3.3.5.jar teragen 100 /inp-{timestamp}", path6, telemetryContext, cancellationToken)
+                    .ConfigureAwait(false);*/
 
             /*foreach (string command in commands1)
             {
@@ -275,35 +288,6 @@ namespace VirtualClient.Actions
 
             this.fileSystem.File.ReplaceInFileAsync(
                         hadoopEnvFilePath, @"# export JAVA_HOME=", $"export JAVA_HOME={this.JavaPackageDirectory}", cancellationToken);
-
-            string dfsParam = @"#!/usr/bin/env bash 
-                                HDFS_DATANODE_USER = root 
-                                HADOOP_SECURE_DN_USER = hdfs
-                                HDFS_NAMENODE_USER = root
-                                HDFS_SECONDARYNAMENODE_USER = root";
-
-            string yarnParam = @"#!/usr/bin/env bash
-                                YARN_RESOURCEMANAGER_USER=root
-                                HADOOP_SECURE_DN_USER=yarn
-                                YARN_NODEMANAGER_USER=root";
-
-            string runFilePath = this.PlatformSpecifics.Combine(this.PackageDirectory, "sbin");
-            string startDfsFilePath = this.PlatformSpecifics.Combine(makeFilePath, "start-dfs.sh");
-            this.fileSystem.File.ReplaceInFileAsync(
-                        startDfsFilePath, @"#!/usr/bin/env bash", dfsParam, cancellationToken);
-
-            string stopDfsFilePath = this.PlatformSpecifics.Combine(makeFilePath, "stop-dfs.sh");
-            this.fileSystem.File.ReplaceInFileAsync(
-                        stopDfsFilePath, @"#!/usr/bin/env bash", dfsParam, cancellationToken);
-
-            string startYarnFilePath = this.PlatformSpecifics.Combine(makeFilePath, "start-yarn.sh");
-            this.fileSystem.File.ReplaceInFileAsync(
-                        startYarnFilePath, @"#!/usr/bin/env bash", yarnParam, cancellationToken);
-
-            string stopYarnFilePath = this.PlatformSpecifics.Combine(makeFilePath, "stop-yarn.sh");
-            this.fileSystem.File.ReplaceInFileAsync(
-                        stopYarnFilePath, @"#!/usr/bin/env bash", yarnParam, cancellationToken);
-
         }
 
         private void CreateHTMLValue(string fileName, IDictionary<string, string> value, CancellationToken cancellationToken)
@@ -330,19 +314,12 @@ namespace VirtualClient.Actions
                     filePath, replaceStatement, replacedStatement, cancellationToken);
         }
 
-        private void CreateNodeFolders(EventContext telemetryContext, CancellationToken cancellationToken)
+        private void ExecutableFilesAsync(params string[] pathSegments)
         {
-            ConsoleLogger.Default.LogInformation($"CreateNodeFolders");
+            string javaExecutablePath = this.PlatformSpecifics.Combine(this.PackageDirectory, "bin", "java");
 
-            // string directoryPath = this.PlatformSpecifics.Combine()
-            string dataDirectory = this.PlatformSpecifics.Combine(this.PackageDirectory, "data");
-            this.fileSystem.Directory.CreateDirectory(dataDirectory);
-
-            string dataNodeDirectory = this.PlatformSpecifics.Combine(this.PackageDirectory, "data", "datanode");
-            string nameNodeDirectory = this.PlatformSpecifics.Combine(this.PackageDirectory, "data", "namenode");
-
-            this.fileSystem.Directory.CreateDirectory(dataNodeDirectory);
-            this.fileSystem.Directory.CreateDirectory(nameNodeDirectory);
+            await this.systemManagement.MakeFileExecutableAsync(path1, this.Platform, cancellationToken)
+                .ConfigureAwait(false);
         }
 
         private Task ExecuteCommandAsync(string commandLine, string arguments, string workingDirectory, EventContext telemetryContext, CancellationToken cancellationToken)
