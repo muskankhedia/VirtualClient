@@ -132,7 +132,7 @@ namespace VirtualClient.Actions
             this.SetEnvironmentVariable(EnvironmentVariable.JAVA_HOME, this.JavaPackageDirectory, EnvironmentVariableTarget.Process);
 
             this.ConfigurationFilesAsync(telemetryContext, cancellationToken);
-            this.ExecutableFilesAsync(telemetryContext, cancellationToken);
+            // this.ExecutableFilesAsync(telemetryContext, cancellationToken);
 
             await this.systemManagement.MakeFileExecutableAsync(this.ExecutablePath, this.Platform, cancellationToken)
                 .ConfigureAwait(false);
@@ -314,13 +314,13 @@ namespace VirtualClient.Actions
                     filePath, replaceStatement, replacedStatement, cancellationToken);
         }
 
-        private void ExecutableFilesAsync(params string[] pathSegments)
-        {
-            string javaExecutablePath = this.PlatformSpecifics.Combine(this.PackageDirectory, "bin", "java");
+        // private void ExecutableFilesAsync(params string[] pathSegments)
+        // {
+        //    string javaExecutablePath = this.PlatformSpecifics.Combine(this.PackageDirectory, "bin", "java");
 
-            await this.systemManagement.MakeFileExecutableAsync(path1, this.Platform, cancellationToken)
-                .ConfigureAwait(false);
-        }
+        // await this.systemManagement.MakeFileExecutableAsync(path1, this.Platform, cancellationToken)
+        //        .ConfigureAwait(false);
+        // }
 
         private Task ExecuteCommandAsync(string commandLine, string arguments, string workingDirectory, EventContext telemetryContext, CancellationToken cancellationToken)
         {
