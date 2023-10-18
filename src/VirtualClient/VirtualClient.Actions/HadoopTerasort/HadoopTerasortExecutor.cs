@@ -185,10 +185,10 @@ namespace VirtualClient.Actions
             await this.ExecuteCommandAsync("bash", "-c 'sbin/start-yarn.sh'", this.PackageDirectory, telemetryContext, cancellationToken)
                     .ConfigureAwait(false);
 
-            await this.ExecuteCommandAsync("bash ", "-c 'bin/hadoop jar share/hadoop/mapreduce/hadoop-mapreduce-examples-3.3.5.jar teragen 100 /inp-{timestamp}'", path6, telemetryContext, cancellationToken)
+            await this.ExecuteCommandAsync("bash ", "-c 'bin/hadoop jar share/hadoop/mapreduce/hadoop-mapreduce-examples-3.3.5.jar teragen 100 /inp-{timestamp}'", this.PackageDirectory, telemetryContext, cancellationToken)
                     .ConfigureAwait(false);
 
-            await this.ExecuteCommandAsync("bash ", "-c 'bin/hadoop jar share/hadoop/mapreduce/hadoop-mapreduce-examples-3.3.5.jar terasort 100 /inp-{timestamp} /out-{timestamp}'", path6, telemetryContext, cancellationToken)
+            await this.ExecuteCommandAsync("bash ", "-c 'bin/hadoop jar share/hadoop/mapreduce/hadoop-mapreduce-examples-3.3.5.jar terasort 100 /inp-{timestamp} /out-{timestamp}'", this.PackageDirectory, telemetryContext, cancellationToken)
                     .ConfigureAwait(false);
 
             // Run mapreduce job based on user input
