@@ -5,21 +5,17 @@ namespace VirtualClient.Actions
 {
     using System;
     using System.Collections.Generic;
-    using System.Data;
     using System.IO.Abstractions;
     using System.Linq;
     using System.Threading;
     using System.Threading.Tasks;
-    using Microsoft.CodeAnalysis;
     using Microsoft.Extensions.DependencyInjection;
     using Microsoft.Extensions.Logging;
-    using Microsoft.VisualBasic;
     using Polly;
     using VirtualClient.Common;
     using VirtualClient.Common.Extensions;
     using VirtualClient.Common.Telemetry;
     using VirtualClient.Contracts;
-    using static Azure.Core.HttpHeader;
 
     /// <summary>
     /// The Hadoop Terasort workload executor
@@ -111,7 +107,7 @@ namespace VirtualClient.Actions
                 this.JdkPackageName, cancellationToken)
                 .ConfigureAwait(false);
 
-            this.PackageDirectory = workloadPackage.Path;
+            this.PackageDirectory = workloadPackage.Path; // /home/azureuser/VirtualClient.13.9.3/content/linux-x64/packages/hadoop-3.3.5/linux-x64
             this.JavaPackageDirectory = javaPackage.Path;
 
             string javaExecutablePath = this.PlatformSpecifics.Combine(this.JavaPackageDirectory, "bin", "java");
@@ -173,75 +169,28 @@ namespace VirtualClient.Actions
                     .ConfigureAwait(false);
             }
 
-           /* await this.ExecuteCommandAsync("bash", "-c \"ssh-keygen-t rsa -P '' -f ~/.ssh/id_rsa\"", this.PackageDirectory, telemetryContext, cancellationToken)
-                    .ConfigureAwait(false);
-
-            await this.ExecuteCommandAsync("bash", "-c 'cat ~/.ssh/id_rsa.pub >> ~/.ssh/authorized_keys'", this.PackageDirectory, telemetryContext, cancellationToken)
-                    .ConfigureAwait(false);*/
-
-            /*await this.ExecuteCommandAsync("sudo", "apt-get install ssh", Environment.CurrentDirectory, telemetryContext, cancellationToken)
-                    .ConfigureAwait(false);
-
-            
-
-            await this.ExecuteCommandAsync("chmod", "0600 ~/.ssh/authorized_keys", this.PackageDirectory, telemetryContext, cancellationToken)
-                    .ConfigureAwait(false);*/
-
-            // await this.ExecuteCommandAsync("ssh", "localhost", this.PackageDirectory, telemetryContext, cancellationToken)
-            // .ConfigureAwait(false);
-
-            /*string path6 = this.PackageDirectory + "/bin";
+            string path6 = this.PackageDirectory + "/bin";
             await this.ExecuteCommandAsync("bash", "-c 'bin/hdfs namenode -format'", this.PackageDirectory, telemetryContext, cancellationToken)
                     .ConfigureAwait(false);
 
             await this.ExecuteCommandAsync("sbin/start-dfs.sh", null, this.PackageDirectory, telemetryContext, cancellationToken)
                     .ConfigureAwait(false);
 
-            await this.ExecuteCommandAsync("/usr/bin/env", "./hdfs dfs -mkdir /user/azureuser", this.PackageDirectory, telemetryContext, cancellationToken)
+            await this.ExecuteCommandAsync("bash", "-c './hdfs dfs -mkdir /user'", this.PackageDirectory, telemetryContext, cancellationToken)
                     .ConfigureAwait(false);
 
-            await this.ExecuteCommandAsync("sbin/start-yarn.sh", null, this.PackageDirectory, telemetryContext, cancellationToken)
+            await this.ExecuteCommandAsync("bash", "-c './hdfs dfs -mkdir /user/azureuser'", this.PackageDirectory, telemetryContext, cancellationToken)
                     .ConfigureAwait(false);
 
-            await this.ExecuteCommandAsync("/usr/bin/env", "./hadoop jar share/hadoop/mapreduce/hadoop-mapreduce-examples-3.3.5.jar teragen 100 /inp-{timestamp}", path6, telemetryContext, cancellationToken)
-                    .ConfigureAwait(false);*/
-
-            /*foreach (string command in commands1)
-            {
-                await this.ExecuteCommandAsync(string.Empty, command, Environment.CurrentDirectory, telemetryContext, cancellationToken)
+            await this.ExecuteCommandAsync("bash", "-c 'sbin/start-yarn.sh'", this.PackageDirectory, telemetryContext, cancellationToken)
                     .ConfigureAwait(false);
-            }*/
 
-            /*foreach (string command in commands)
-            {
-                *//*using (IProcessProxy process = await this.ExecuteCommandAsync(command, this.PackageDirectory, telemetryContext, cancellationToken)
-                   .ConfigureAwait(false))
-                {
-                    if (!cancellationToken.IsCancellationRequested)
-                    {
-                        // await this.LogProcessDetailsAsync(process, telemetryContext, "7Zip", logToFile: true);
-                        ConsoleLogger.Default.LogInformation($"command: {command}");
-                        process.ThrowIfWorkloadFailed();
-                        // this.CaptureMetrics(process, telemetryContext, commandLineArguments);
-                    }
-                }*//*
-                await this.ExecuteCommandAsync(string.Empty, command, this.PackageDirectory, telemetryContext, cancellationToken)
+            await this.ExecuteCommandAsync("bash ", "-c 'bin/hadoop jar share/hadoop/mapreduce/hadoop-mapreduce-examples-3.3.5.jar teragen 100 /inp-{timestamp}'", path6, telemetryContext, cancellationToken)
                     .ConfigureAwait(false);
-            }*/
 
-            /*ConsoleLogger.Default.LogInformation($"Commands assigned");
-
-            foreach (string command in commands)
-            {
-                ConsoleLogger.Default.LogInformation($"Executing Command: {command}");
-
-                await this.ExecuteCommandAsync(command, null, this.PackageDirectory, telemetryContext, cancellationToken, true)
+            await this.ExecuteCommandAsync("bash ", "-c 'bin/hadoop jar share/hadoop/mapreduce/hadoop-mapreduce-examples-3.3.5.jar terasort 100 /inp-{timestamp} /out-{timestamp}'", path6, telemetryContext, cancellationToken)
                     .ConfigureAwait(false);
-            }
 
-            // Start the server
-            this.ExecuteCommandAsync("sbin/start-yarn.sh", null, this.PackageDirectory, telemetryContext, cancellationToken, true)
-                    .ConfigureAwait(false);*/
             // Run mapreduce job based on user input
 
             // Mapreduce commands - teragen
