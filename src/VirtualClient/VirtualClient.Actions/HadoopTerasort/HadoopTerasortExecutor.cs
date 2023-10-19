@@ -161,35 +161,24 @@ namespace VirtualClient.Actions
             await this.systemManagement.MakeFileExecutableAsync(path5, this.Platform, cancellationToken)
                 .ConfigureAwait(false);
 
-            List<string> result = this.CommandArguments.Split(',').ToList();
+            /* List<string> result = this.CommandArguments.Split(',').ToList();
 
             foreach (string r in result)
             {
                 await this.ExecuteCommandAsync(this.CommandLine, r, this.PackageDirectory, telemetryContext, cancellationToken)
                     .ConfigureAwait(false);
-            }
+            } */
 
-            string path6 = this.PackageDirectory + "/bin";
-            await this.ExecuteCommandAsync("bash", "-c 'bin/hdfs namenode -format'", this.PackageDirectory, telemetryContext, cancellationToken)
-                    .ConfigureAwait(false);
-
-            await this.ExecuteCommandAsync("sbin/start-dfs.sh", null, this.PackageDirectory, telemetryContext, cancellationToken)
-                    .ConfigureAwait(false);
-
-            await this.ExecuteCommandAsync("bash", "-c './hdfs dfs -mkdir /user'", this.PackageDirectory, telemetryContext, cancellationToken)
-                    .ConfigureAwait(false);
-
-            await this.ExecuteCommandAsync("bash", "-c './hdfs dfs -mkdir /user/azureuser'", this.PackageDirectory, telemetryContext, cancellationToken)
-                    .ConfigureAwait(false);
-
-            await this.ExecuteCommandAsync("bash", "-c 'sbin/start-yarn.sh'", this.PackageDirectory, telemetryContext, cancellationToken)
-                    .ConfigureAwait(false);
-
-            await this.ExecuteCommandAsync("bash ", "-c 'bin/hadoop jar share/hadoop/mapreduce/hadoop-mapreduce-examples-3.3.5.jar teragen 100 /inp-{timestamp}'", this.PackageDirectory, telemetryContext, cancellationToken)
-                    .ConfigureAwait(false);
-
-            await this.ExecuteCommandAsync("bash ", "-c 'bin/hadoop jar share/hadoop/mapreduce/hadoop-mapreduce-examples-3.3.5.jar terasort 100 /inp-{timestamp} /out-{timestamp}'", this.PackageDirectory, telemetryContext, cancellationToken)
-                    .ConfigureAwait(false);
+            await this.ExecuteCommandAsync("bash", $"-c \"ssh-keygen -t rsa -P '' -f ~/.ssh/id_rsa\"", this.PackageDirectory, telemetryContext, cancellationToken);
+            await this.ExecuteCommandAsync("bash", $"-c \"cat ~/.ssh/id_rsa.pub >> ~/.ssh/authorized_keys\"", this.PackageDirectory, telemetryContext, cancellationToken);
+            await this.ExecuteCommandAsync("bash", $"-c \"chmod 0600 ~/.ssh/authorized_keys\"", this.PackageDirectory, telemetryContext, cancellationToken);
+            await this.ExecuteCommandAsync("bash", $"-c \"echo y | bin/hdfs namenode -format\"", this.PackageDirectory, telemetryContext, cancellationToken);
+            await this.ExecuteCommandAsync("bash", $"-c \"sbin/start-dfs.sh\"", this.PackageDirectory, telemetryContext, cancellationToken);
+            await this.ExecuteCommandAsync("bash", $"-c \"bin/hdfs dfs -mkdir /user\"", this.PackageDirectory, telemetryContext, cancellationToken);
+            await this.ExecuteCommandAsync("bash", $"-c \"bin/hdfs dfs -mkdir /user/azureuser\"", this.PackageDirectory, telemetryContext, cancellationToken);
+            await this.ExecuteCommandAsync("bash", $"-c \"sbin/start-yarn.sh\"", this.PackageDirectory, telemetryContext, cancellationToken);
+            await this.ExecuteCommandAsync("bash", $"-c \"bin/hadoop jar share/hadoop/mapreduce/hadoop-mapreduce-examples-3.3.5.jar teragen 100 /inp-{timestamp}\"", this.PackageDirectory, telemetryContext, cancellationToken);
+            await this.ExecuteCommandAsync("bash", $"-c \"bin/hadoop jar share/hadoop/mapreduce/hadoop-mapreduce-examples-3.3.5.jar terasort 100 /inp-{timestamp} /out-{timestamp}\"", this.PackageDirectory, telemetryContext, cancellationToken);
 
             // Run mapreduce job based on user input
 
@@ -270,31 +259,5 @@ namespace VirtualClient.Actions
         // await this.systemManagement.MakeFileExecutableAsync(path1, this.Platform, cancellationToken)
         //        .ConfigureAwait(false);
         // }
-
-        private Task ExecuteCommandAsync(string commandLine, string arguments, string workingDirectory, EventContext telemetryContext, CancellationToken cancellationToken)
-        {
-            EventContext relatedContext = telemetryContext.Clone();
-
-            return this.RetryPolicy.ExecuteAsync(async () =>
-            {
-                using (IProcessProxy process = this.systemManagement.ProcessManager.CreateProcess(commandLine, arguments, workingDirectory))
-                {
-                    ConsoleLogger.Default.LogInformation($"command: {arguments},,,, workingDirectory: {workingDirectory}");
-                    this.CleanupTasks.Add(() => process.SafeKill());
-                    this.LogProcessTrace(process);
-
-                    await process.StartAndWaitAsync(cancellationToken)
-                        .ConfigureAwait(false);
-
-                    if (!cancellationToken.IsCancellationRequested)
-                    {
-                        await this.LogProcessDetailsAsync(process, relatedContext, "HadoopExecutor")
-                            .ConfigureAwait(false);
-
-                        process.ThrowIfErrored<DependencyException>(errorReason: ErrorReason.DependencyInstallationFailed);
-                    }
-                }
-            });
-        }
     }
 }
