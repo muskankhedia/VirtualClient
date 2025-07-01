@@ -47,11 +47,13 @@ namespace VirtualClient.Actions
         }
 
         [Test]
-        [TestCase(PlatformID.Win32NT, @"\win-x64", @"genericScript.ps1")]
-        public async Task PowershellExecutorExecutesTheCorrectWorkloadCommands(PlatformID platform, string platformSpecificPath, string command)
+        [TestCase(PlatformID.Win32NT, @"\win-x64", @"genericScript.ps1", false, "powershell")]
+        [TestCase(PlatformID.Win32NT, @"\win-x64", @"genericScript.ps1", true, "pwsh")]
+        public async Task PowershellExecutorExecutesTheCorrectWorkloadCommands(PlatformID platform, string platformSpecificPath, string command, bool usePwsh, string executorType)
         {
             this.SetupDefaultBehavior(platform);
             this.fixture.Parameters["ScriptPath"] = command;
+            this.fixture.Parameters["UsePwsh"] = usePwsh;
 
             string workingDirectory = $"{this.mockPackage.Path}{platformSpecificPath}";
             string fullCommand = $"{this.mockPackage.Path}{platformSpecificPath}\\{command} parameter1 parameter2";
@@ -59,7 +61,7 @@ namespace VirtualClient.Actions
             using (TestPowershellExecutor executor = new TestPowershellExecutor(this.fixture))
             {
                 bool commandExecuted = false;
-                string expectedCommand = $"powershell -ExecutionPolicy Bypass -NoProfile -NonInteractive -WindowStyle Hidden -Command \"cd '{workingDirectory}';{fullCommand}\"";
+                string expectedCommand = $"{executorType} -ExecutionPolicy Bypass -NoProfile -NonInteractive -WindowStyle Hidden -Command \"cd '{workingDirectory}';{fullCommand}\"";
                 this.fixture.ProcessManager.OnCreateProcess = (exe, arguments, workingDirectory) =>
                 {
                     if(expectedCommand == $"{exe} {arguments}")
@@ -130,7 +132,8 @@ namespace VirtualClient.Actions
                 { nameof(PowershellExecutor.CommandLine), "parameter1 parameter2" },
                 { nameof(PowershellExecutor.ScriptPath), "genericScript.ps1" },
                 { nameof(PowershellExecutor.LogPaths), "*.log;*.txt;*.json" },
-                { nameof(PowershellExecutor.ToolName), "GenericTool" }
+                { nameof(PowershellExecutor.ToolName), "GenericTool" },
+                { nameof(PowershellExecutor.UsePwsh), false }
             };
 
             this.fixture.ProcessManager.OnCreateProcess = (command, arguments, directory) => this.fixture.Process;

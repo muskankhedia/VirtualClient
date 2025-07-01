@@ -10,6 +10,7 @@ namespace VirtualClient.Actions
     using Microsoft.Extensions.DependencyInjection;
     using Microsoft.Extensions.Logging;
     using VirtualClient.Common;
+    using VirtualClient.Common.Extensions;
     using VirtualClient.Common.Telemetry;
     using VirtualClient.Contracts;
 
@@ -29,13 +30,24 @@ namespace VirtualClient.Actions
         }
 
         /// <summary>
+        /// The parameter specifies whether to use pwsh, by default it is true
+        /// </summary>
+        public bool UsePwsh
+        {
+            get
+            {
+                return this.Parameters.GetValue<bool>(nameof(this.UsePwsh), false);
+            }
+        }
+
+        /// <summary>
         /// Executes the PowerShell script.
         /// </summary>
         protected override async Task ExecuteAsync(EventContext telemetryContext, CancellationToken cancellationToken)
         {
             using (BackgroundOperations profiling = BackgroundOperations.BeginProfiling(this, cancellationToken))
             {
-                string command = "powershell";
+                string command = this.UsePwsh ? "pwsh" : "powershell";
                 string commandArguments = SensitiveData.ObscureSecrets(
                     $"-ExecutionPolicy Bypass -NoProfile -NonInteractive -WindowStyle Hidden -Command \"cd '{this.WorkloadPackage.Path}';{this.ExecutablePath} {this.CommandLine}\"");
 
